@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+.env
+.git/
+tests/
+README.md
+.keys/
+*.json
+.vscode/
+.idea/

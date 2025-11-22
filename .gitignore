@@ -1,0 +1,9 @@
+# Claude Code configuration
+.claude/
+
+# Internal documentation (keep private)
+.internal_docs/
+
+# OS
+.DS_Store
+Thumbs.db
