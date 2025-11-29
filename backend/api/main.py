@@ -210,4 +210,4 @@ def _parse_agent_response(response_text: str, location: str) -> AnalyzeResponse:
 # For local development
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run("api.main:app", host="0.0.0.0", port=8080, reload=True)
