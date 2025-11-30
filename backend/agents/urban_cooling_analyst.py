@@ -15,6 +15,12 @@ from tools.analysis import (
     filter_plantable_areas
 )
 
+# Global caches to store large data between tool calls (avoids sending to LLM)
+_heat_data_cache = None
+_land_use_cache = None
+_heat_grid_cache = None
+_zones_cache = None
+
 
 def geocode(location: str) -> dict:
     """
@@ -47,7 +53,20 @@ def get_heat_data(west: float, south: float, east: float, north: float, date_ran
         Dictionary containing thermal samples, statistics, and metadata
     """
     bbox = [west, south, east, north]
-    return fetch_heat_data(bbox, date_range)
+    result = fetch_heat_data(bbox, date_range)
+    # Store full data globally for later processing, but return summary to LLM to save tokens
+    global _heat_data_cache
+    _heat_data_cache = result
+    return {
+        "source": result["source"],
+        "bbox": result["bbox"],
+        "date_range": result["date_range"],
+        "statistics": result["statistics"],
+        "resolution": result["resolution"],
+        "sample_count": result["sample_count"],
+        "image_count": result["image_count"],
+        "message": "Heat data fetched successfully. Use process_thermal_data to analyze the samples."
+    }
 
 
 def get_land_use(west: float, south: float, east: float, north: float) -> dict:
@@ -61,62 +80,90 @@ def get_land_use(west: float, south: float, east: float, north: float) -> dict:
         north: Northern latitude boundary in degrees
 
     Returns:
-        Dictionary containing categorized land features (buildings, parks, water, forests)
+        Dictionary containing summary of land features (buildings, parks, water, forests)
     """
+    global _land_use_cache
     bbox = [west, south, east, north]
-    return fetch_land_use_data(bbox)
+    result = fetch_land_use_data(bbox)
+    _land_use_cache = result
+    # Return summary to LLM, not full data
+    return {
+        "bbox": result.get("bbox"),
+        "buildings_count": len(result.get("buildings", [])),
+        "parks_count": len(result.get("parks", [])),
+        "water_count": len(result.get("water", [])),
+        "forests_count": len(result.get("forests", [])),
+        "message": "Land use data fetched successfully. Use score_heat_zones to analyze."
+    }
 
 
-def process_thermal_data(heat_data_json: str) -> dict:
+def process_thermal_data() -> dict:
     """
     Convert thermal sample data into a regular grid structure for analysis.
-
-    Args:
-        heat_data_json: JSON string of heat data from get_heat_data
+    Uses cached heat data from get_heat_data call.
 
     Returns:
-        Dictionary containing the grid structure with temperature data per cell
+        Dictionary containing summary of the grid structure
     """
-    import json
-    heat_data = json.loads(heat_data_json) if isinstance(heat_data_json, str) else heat_data_json
-    return process_heat_raster(heat_data)
+    global _heat_data_cache, _heat_grid_cache
+    if _heat_data_cache is None:
+        return {"error": "No heat data available. Call get_heat_data first."}
+
+    result = process_heat_raster(_heat_data_cache)
+    _heat_grid_cache = result
+    # Return summary to LLM
+    return {
+        "grid_cells": result.get("grid_cells", 0),
+        "bbox": result.get("bbox"),
+        "cell_size": result.get("cell_size"),
+        "message": "Thermal data processed into grid. Use score_heat_zones to calculate scores."
+    }
 
 
-def score_heat_zones(heat_grid_json: str, land_use_json: str) -> dict:
+def score_heat_zones() -> dict:
     """
     Calculate heat scores for each grid cell based on temperature and land use.
-
-    Args:
-        heat_grid_json: JSON string of heat grid from process_thermal_data
-        land_use_json: JSON string of land use data from get_land_use
+    Uses cached data from previous tool calls.
 
     Returns:
-        Dictionary containing zones with heat scores, priorities, and geometries
+        Dictionary containing summary of zones with heat scores
     """
-    import json
-    heat_grid = json.loads(heat_grid_json) if isinstance(heat_grid_json, str) else heat_grid_json
-    land_use = json.loads(land_use_json) if isinstance(land_use_json, str) else land_use_json
-    return calculate_heat_scores(heat_grid, land_use)
+    global _heat_grid_cache, _land_use_cache, _zones_cache
+    if _heat_grid_cache is None:
+        return {"error": "No heat grid available. Call process_thermal_data first."}
+    if _land_use_cache is None:
+        return {"error": "No land use data available. Call get_land_use first."}
+
+    result = calculate_heat_scores(_heat_grid_cache, _land_use_cache)
+    _zones_cache = result
+    # Return summary to LLM
+    zones = result.get("zones", [])
+    return {
+        "total_zones": len(zones),
+        "temp_range": result.get("temp_range"),
+        "message": f"Calculated heat scores for {len(zones)} zones. Use filter_plantable_zones to get final results."
+    }
 
 
-def filter_plantable_zones(zones_json: str, land_use_json: str) -> dict:
+def filter_plantable_zones() -> dict:
     """
     Filter heat zones to only include areas suitable for tree planting.
+    Uses cached data from previous tool calls.
 
     Removes water bodies, dense forests, and heavily built areas.
-    Returns top 20 hottest plantable zones.
-
-    Args:
-        zones_json: JSON string of scored zones from score_heat_zones
-        land_use_json: JSON string of land use data from get_land_use
+    Returns top 20 hottest plantable zones with full details.
 
     Returns:
         Dictionary containing filtered plantable zones and statistics
     """
-    import json
-    zones = json.loads(zones_json) if isinstance(zones_json, str) else zones_json
-    land_use = json.loads(land_use_json) if isinstance(land_use_json, str) else land_use_json
-    return filter_plantable_areas(zones, land_use)
+    global _zones_cache, _land_use_cache
+    if _zones_cache is None:
+        return {"error": "No zones available. Call score_heat_zones first."}
+    if _land_use_cache is None:
+        return {"error": "No land use data available. Call get_land_use first."}
+
+    # This is the final step - return full zone data for the frontend
+    return filter_plantable_areas(_zones_cache, _land_use_cache)
 
 
 # Define the Urban Cooling Analyst Agent
@@ -130,12 +177,12 @@ Your role: Identify the hottest areas in a city that would benefit most from tre
 
 When a user provides a location (city name or zip code), follow this process:
 
-1. Use the geocode tool to convert the location to coordinates and get a bounding box
-2. Use get_heat_data with the bounding box coordinates to fetch thermal imagery
-3. Use get_land_use with the same bounding box to get land features
-4. Use process_thermal_data to convert the heat data to a grid
-5. Use score_heat_zones with the grid and land use data to calculate heat scores
-6. Use filter_plantable_zones to get the top plantable hot zones
+1. Use geocode(location) to convert the location to coordinates and get a bounding box
+2. Use get_heat_data(west, south, east, north) with the bounding box coordinates to fetch thermal imagery
+3. Use get_land_use(west, south, east, north) with the same bounding box to get land features
+4. Use process_thermal_data() to convert the cached heat data to a grid (no parameters needed)
+5. Use score_heat_zones() to calculate heat scores (no parameters needed, uses cached data)
+6. Use filter_plantable_zones() to get the top plantable hot zones (no parameters needed)
 
 After completing the analysis, return the results as structured JSON with:
 - location: The analyzed location name

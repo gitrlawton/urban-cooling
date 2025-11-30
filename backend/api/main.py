@@ -8,6 +8,9 @@ import os
 from datetime import date
 from typing import Any, Optional
 
+from dotenv import load_dotenv
+load_dotenv()  # Load environment variables from .env file
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -140,6 +143,9 @@ async def analyze_heat(request: AnalyzeRequest):
         return heat_zones
 
     except Exception as e:
+        import traceback
+        print(f"Error in analyze_heat: {str(e)}")
+        print(traceback.format_exc())
         raise HTTPException(
             status_code=500,
             detail=f"Analysis failed: {str(e)}"

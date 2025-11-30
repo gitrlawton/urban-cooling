@@ -97,8 +97,8 @@ def fetch_heat_data(bbox: List[float], date_range: str = "2024-06-01,2024-08-31"
         # Sample the thermal data as a grid
         sample = thermal_celsius.sample(
             region=aoi,
-            scale=30,  # 30m resolution (LANDSAT resolution)
-            numPixels=5000,  # Maximum sample points
+            scale=100,  # 100m resolution (reduced from 30m to limit data size)
+            numPixels=500,  # Reduced from 5000 to limit token usage
             geometries=True  # Include point geometries
         )
 
