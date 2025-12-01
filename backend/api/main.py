@@ -4,9 +4,41 @@ ShadePlan FastAPI Application
 Provides REST API endpoints for urban heat analysis.
 """
 
+import logging
 import os
 from datetime import date
 from typing import Any, Optional
+
+# Configure logging for ADK observability
+# Captures agent decisions, tool calls, and LLM interactions
+from datetime import datetime
+from pathlib import Path
+
+# Create logs directory if it doesn't exist
+logs_dir = Path(__file__).parent.parent.parent / '.internal_docs' / 'logs'
+logs_dir.mkdir(parents=True, exist_ok=True)
+
+# Create timestamped log file on first server start
+# All worker processes will share the same file via the global attribute
+if not hasattr(logging, '_shadeplan_log_file'):
+    logging._shadeplan_log_file = logs_dir / f"agent_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    # Write header to new log file
+    with open(logging._shadeplan_log_file, 'w') as f:
+        f.write(f"=== ShadePlan Agent Log - Started {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n\n")
+
+log_filename = logging._shadeplan_log_file
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_filename, mode='a'),  # Append mode
+        logging.StreamHandler()  # Also print to console
+    ],
+    force=True  # Override any existing configuration
+)
+logger = logging.getLogger(__name__)
+logger.info(f"Logging to: {log_filename}")
 
 from dotenv import load_dotenv
 load_dotenv()  # Load environment variables from .env file
