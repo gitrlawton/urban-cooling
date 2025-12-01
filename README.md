@@ -259,17 +259,6 @@ The project includes a Dockerfile for future cloud deployment. Currently running
 
 ---
 
-## Capstone Features Demonstrated
-
-This project demonstrates the following AI agent concepts:
-
-- **LLM-powered Agent**: Urban Cooling Analyst agent using Gemini 2.0 Flash
-- **Custom Tools**: 6 specialized tools for geocoding, data fetching, and analysis
-- **Sessions & State**: InMemoryRunner for session management
-- **Effective Use of Gemini**: Agent reasoning and tool orchestration
-
----
-
 ## Future Roadmap
 
 - **Phase 2**: Shade simulation with time-of-day shadows
