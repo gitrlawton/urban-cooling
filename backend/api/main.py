@@ -215,6 +215,9 @@ async def analyze_heat(request: AnalyzeRequest):
 
         # Run the agent and collect responses
         final_response_text = ""
+        filter_zones_response = None
+        location_name = request.location
+
         async for event in runner.run_async(
             user_id="api_user",
             session_id=session.id,
@@ -225,10 +228,21 @@ async def analyze_heat(request: AnalyzeRequest):
                 for part in event.content.parts:
                     if hasattr(part, 'text') and part.text:
                         final_response_text = part.text
+                    # Capture function responses - these contain the actual structured data
+                    if hasattr(part, 'function_response') and part.function_response is not None:
+                        func_resp = part.function_response
+                        if func_resp.name == 'filter_plantable_zones':
+                            filter_zones_response = func_resp.response
+                        elif func_resp.name == 'geocode':
+                            # Get the proper location name from geocode
+                            location_name = func_resp.response.get('location_name', request.location)
 
-        # Parse the agent's response to extract heat zones
-        # The agent should return structured JSON
-        heat_zones = _parse_agent_response(final_response_text, request.location)
+        # Use the function response data directly if available (more reliable than LLM text)
+        if filter_zones_response:
+            heat_zones = _parse_function_response(filter_zones_response, location_name)
+        else:
+            # Fall back to parsing the agent's text response
+            heat_zones = _parse_agent_response(final_response_text, location_name)
 
         return heat_zones
 
@@ -240,6 +254,46 @@ async def analyze_heat(request: AnalyzeRequest):
             status_code=500,
             detail=f"Analysis failed: {str(e)}"
         )
+
+
+def _parse_function_response(data: dict, location: str) -> AnalyzeResponse:
+    """
+    Parse the filter_plantable_zones function response directly.
+
+    This is more reliable than parsing the LLM's text output since it
+    captures the actual structured data from the tool call.
+    """
+    # Extract zones from the function response
+    zones_data = data.get("zones", [])
+
+    heat_zones = []
+    for zone in zones_data[:20]:  # Limit to 20 zones
+        heat_zones.append(HeatZone(
+            id=zone.get("id", len(heat_zones) + 1),
+            geometry=zone.get("geometry", {}),
+            heat_score=zone.get("heat_score", 0),
+            temp_celsius=zone.get("temp_celsius", 0),
+            priority=zone.get("priority", "medium"),
+            area_sqm=zone.get("area_sqm", 0),
+            center=zone.get("center"),
+            in_park=zone.get("in_park"),
+            plantable=zone.get("plantable")
+        ))
+
+    # Extract metadata from the function response
+    stats = data.get("statistics", {})
+    filtering = data.get("filtering_summary", {})
+
+    return AnalyzeResponse(
+        location=location,
+        analysis_date=date.today().isoformat(),
+        heat_zones=heat_zones,
+        metadata=AnalysisMetadata(
+            total_zones_analyzed=filtering.get("original_count", stats.get("total_zones", len(heat_zones))),
+            filtering_summary=filtering if filtering else None,
+            temp_range=data.get("temp_range")
+        )
+    )
 
 
 def _parse_agent_response(response_text: str, location: str) -> AnalyzeResponse:
