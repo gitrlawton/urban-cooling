@@ -2,18 +2,21 @@
 
 import { useState } from 'react';
 
+export type AnalysisMode = 'heat' | 'combined';
+
 interface SearchFormProps {
-  onAnalyze: (location: string) => void;
+  onAnalyze: (location: string, mode: AnalysisMode) => void;
   loading: boolean;
 }
 
 export default function SearchForm({ onAnalyze, loading }: SearchFormProps) {
   const [location, setLocation] = useState('');
+  const [mode, setMode] = useState<AnalysisMode>('heat');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (location.trim()) {
-      onAnalyze(location);
+      onAnalyze(location, mode);
     }
   };
 
@@ -24,7 +27,7 @@ export default function SearchForm({ onAnalyze, loading }: SearchFormProps) {
         Identify the hottest areas in your city that need trees
       </p>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 mb-4">
         <input
           type="text"
           value={location}
@@ -42,9 +45,45 @@ export default function SearchForm({ onAnalyze, loading }: SearchFormProps) {
         </button>
       </div>
 
+      {/* Analysis mode toggle */}
+      <div className="flex items-center justify-center gap-4">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="radio"
+            name="mode"
+            value="heat"
+            checked={mode === 'heat'}
+            onChange={() => setMode('heat')}
+            disabled={loading}
+            className="w-4 h-4 text-blue-600"
+          />
+          <span className="text-sm">Heat Only</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="radio"
+            name="mode"
+            value="combined"
+            checked={mode === 'combined'}
+            onChange={() => setMode('combined')}
+            disabled={loading}
+            className="w-4 h-4 text-blue-600"
+          />
+          <span className="text-sm">Heat + Shade</span>
+        </label>
+      </div>
+
+      {mode === 'combined' && (
+        <p className="mt-2 text-xs text-gray-500 text-center">
+          Combined analysis includes shade simulation (takes longer)
+        </p>
+      )}
+
       {loading && (
-        <p className="mt-4 text-sm text-gray-600">
-          Fetching heat data and analyzing zones...
+        <p className="mt-4 text-sm text-gray-600 text-center">
+          {mode === 'combined'
+            ? 'Analyzing heat zones and simulating shade coverage...'
+            : 'Fetching heat data and analyzing zones...'}
         </p>
       )}
     </form>
