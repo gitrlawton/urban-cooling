@@ -1,9 +1,11 @@
 'use client';
 
-import { Polygon, Popup, Circle } from 'react-leaflet';
+import { useEffect } from 'react';
+import { Polygon, Popup, Circle, useMap } from 'react-leaflet';
+import L from 'leaflet';
 import { ShadeZone } from '../types';
 
-type ColorMode = 'coverage' | 'deficit' | 'combined';
+type ColorMode = 'coverage' | 'deficit' | 'combined' | 'heat';
 
 interface ShadeLayerProps {
   zones: ShadeZone[];
@@ -16,6 +18,38 @@ export default function ShadeLayer({
   selectedHour,
   colorMode = 'combined'
 }: ShadeLayerProps) {
+  const map = useMap();
+
+  // Fit map to show all zones
+  useEffect(() => {
+    if (zones.length > 0) {
+      const validBounds: [number, number][] = [];
+
+      zones.forEach(zone => {
+        if (zone.geometry && zone.geometry.coordinates) {
+          // Add polygon coordinates
+          zone.geometry.coordinates[0].forEach(coord => {
+            validBounds.push([coord[1], coord[0]]);
+          });
+        } else if (zone.center) {
+          // Add center point
+          validBounds.push([zone.center.lat, zone.center.lon]);
+        }
+      });
+
+      if (validBounds.length > 0) {
+        const bounds = L.latLngBounds(validBounds);
+        map.fitBounds(bounds, { padding: [20, 20] });
+      }
+    }
+  }, [zones, map]);
+
+  // Color based on heat score (same as HeatZoneLayer)
+  const getHeatColor = (heatScore: number) => {
+    if (heatScore >= 80) return '#dc2626'; // red-600
+    if (heatScore >= 60) return '#f97316'; // orange-500
+    return '#fbbf24'; // yellow-400
+  };
 
   // Color based on shade coverage (green = good shade, red = poor shade)
   const getShadeColor = (shadeCoverage: number) => {
@@ -41,6 +75,8 @@ export default function ShadeLayer({
 
   const getColor = (zone: ShadeZone) => {
     switch (colorMode) {
+      case 'heat':
+        return getHeatColor(zone.heat_score);
       case 'coverage':
         return getShadeColor(zone.shade_coverage);
       case 'deficit':

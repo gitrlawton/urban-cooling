@@ -498,6 +498,10 @@ Return the results as JSON with:
 
         # Run the agent and collect responses
         final_response_text = ""
+        shade_deficit_response = None
+        shade_simulations = []
+        location_name = request.location
+
         async for event in runner.run_async(
             user_id="api_user",
             session_id=session.id,
@@ -507,9 +511,27 @@ Return the results as JSON with:
                 for part in event.content.parts:
                     if hasattr(part, 'text') and part.text:
                         final_response_text = part.text
+                    # Capture function responses for structured data
+                    if hasattr(part, 'function_response') and part.function_response is not None:
+                        func_resp = part.function_response
+                        if func_resp.name == 'analyze_shade_deficit':
+                            shade_deficit_response = func_resp.response
+                        elif func_resp.name == 'simulate_shade':
+                            shade_simulations.append(func_resp.response)
+                        elif func_resp.name == 'geocode':
+                            location_name = func_resp.response.get('location_name', request.location)
 
-        # Parse the combined response
-        return _parse_shade_response(final_response_text, request.location, simulation_date)
+        # Use the function response data directly if available
+        if shade_deficit_response:
+            return _parse_shade_function_response(
+                shade_deficit_response,
+                shade_simulations,
+                location_name,
+                simulation_date
+            )
+        else:
+            # Fall back to parsing the agent's text response
+            return _parse_shade_response(final_response_text, location_name, simulation_date)
 
     except Exception as e:
         import traceback
@@ -519,6 +541,69 @@ Return the results as JSON with:
             status_code=500,
             detail=f"Combined analysis failed: {str(e)}"
         )
+
+
+def _parse_shade_function_response(
+    shade_deficit_data: dict,
+    shade_simulations: list,
+    location: str,
+    simulation_date: str
+) -> ShadeResponse:
+    """
+    Parse the analyze_shade_deficit function response directly.
+
+    This is more reliable than parsing the LLM's text output since it
+    captures the actual structured data from the tool calls.
+    """
+    # Extract zones from the shade deficit response
+    zones_data = shade_deficit_data.get("zones", [])
+    zones = []
+    for zone in zones_data[:20]:  # Limit to 20 zones
+        zones.append(ShadeZone(
+            id=zone.get("id", len(zones) + 1),
+            geometry=zone.get("geometry"),
+            heat_score=zone.get("heat_score", 0),
+            temp_celsius=zone.get("temp_celsius"),
+            shade_coverage=zone.get("shade_coverage", 0),
+            shade_deficit=zone.get("shade_deficit", 0),
+            combined_score=zone.get("combined_score", 0),
+            priority=zone.get("priority", "medium"),
+            area_sqm=zone.get("area_sqm"),
+            center=zone.get("center")
+        ))
+
+    # Build hourly coverage from shade simulations
+    hourly_coverage = []
+    for sim in shade_simulations:
+        hourly_coverage.append(HourlyCoverage(
+            hour=sim.get("hour", 0),
+            coverage_percent=sim.get("coverage_percent", 0),
+            building_shade_percent=sim.get("building_shade_percent"),
+            tree_shade_percent=sim.get("tree_shade_percent"),
+            is_night=sim.get("is_night", False)
+        ))
+
+    # Sort hourly coverage by hour
+    hourly_coverage.sort(key=lambda x: x.hour)
+
+    # Extract summary from the shade deficit response
+    summary = shade_deficit_data.get("summary", {})
+
+    return ShadeResponse(
+        location=location,
+        analysis_date=date.today().isoformat(),
+        simulation_date=simulation_date,
+        zones=zones,
+        hourly_coverage=hourly_coverage,
+        metadata=ShadeMetadata(
+            total_zones_analyzed=summary.get("total_zones", len(zones)),
+            avg_shade_deficit=summary.get("avg_shade_deficit", 0),
+            high_deficit_count=summary.get("high_deficit_count", 0),
+            buildings_analyzed=summary.get("buildings_analyzed", 0),
+            trees_analyzed=summary.get("trees_analyzed", 0),
+            simulation_date=simulation_date
+        )
+    )
 
 
 def _parse_shade_response(response_text: str, location: str, simulation_date: str) -> ShadeResponse:

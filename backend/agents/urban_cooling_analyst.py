@@ -366,7 +366,7 @@ def clear_shade_cache() -> dict:
 
 # Define the Urban Cooling Analyst Agent
 root_agent = Agent(
-    model="gemini-2.5-flash-lite",
+    model="gemini-2.5-flash",
     name="urban_cooling_analyst",
     description="Identifies the hottest areas in a city that would benefit most from tree planting, including shade deficit analysis.",
     instruction="""You are the Urban Cooling Analyst Agent for ShadePlan.

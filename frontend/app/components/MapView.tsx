@@ -26,11 +26,23 @@ export default function MapView({
   const defaultCenter: [number, number] = center || [37.7749, -122.4194]; // San Francisco
 
   // Determine which layer to show based on view mode
-  const showHeatLayer = viewMode === 'heat' && heatZones && heatZones.length > 0;
-  const showShadeLayer = (viewMode === 'shade' || viewMode === 'combined') && shadeZones && shadeZones.length > 0;
+  const hasHeatZones = heatZones && heatZones.length > 0;
+  const hasShadeZones = shadeZones && shadeZones.length > 0;
+
+  // Show HeatZoneLayer only when we have heat-only data
+  const showHeatLayer = viewMode === 'heat' && hasHeatZones;
+
+  // Show ShadeLayer for shade/combined views, OR for heat view when we only have shade data
+  const showShadeLayer = hasShadeZones && (
+    viewMode === 'shade' ||
+    viewMode === 'combined' ||
+    (viewMode === 'heat' && !hasHeatZones)
+  );
 
   // Determine color mode for shade layer
-  const shadeColorMode = viewMode === 'shade' ? 'coverage' : 'combined';
+  // Use 'heat' mode when viewing heat with shade data
+  const shadeColorMode = viewMode === 'heat' ? 'heat' :
+    viewMode === 'shade' ? 'coverage' : 'combined';
 
   return (
     <div className="relative w-full h-[600px]">
