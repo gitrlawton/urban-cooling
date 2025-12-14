@@ -174,8 +174,13 @@ def filter_plantable_zones() -> dict:
     if _land_use_cache is None:
         return {"error": "No land use data available. Call get_land_use first."}
 
-    # This is the final step - return full zone data for the frontend
-    return filter_plantable_areas(_zones_cache, _land_use_cache)
+    # Filter to plantable zones and update cache so shade analysis uses same zones
+    result = filter_plantable_areas(_zones_cache, _land_use_cache)
+
+    # Update cache with filtered zones so analyze_shade_deficit uses the same zones
+    _zones_cache = result
+
+    return result
 
 
 # =============================================================================
@@ -366,7 +371,7 @@ def clear_shade_cache() -> dict:
 
 # Define the Urban Cooling Analyst Agent
 root_agent = Agent(
-    model="gemini-2.5-flash",
+    model="gemini-2.5-flash-lite",
     name="urban_cooling_analyst",
     description="Identifies the hottest areas in a city that would benefit most from tree planting, including shade deficit analysis.",
     instruction="""You are the Urban Cooling Analyst Agent for ShadePlan.

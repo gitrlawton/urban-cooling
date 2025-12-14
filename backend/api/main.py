@@ -381,7 +381,8 @@ async def analyze_shade(request: ShadeRequest):
         clear_shade_cache()
 
         # Determine simulation date
-        simulation_date = request.date or date.today().isoformat()
+        # Default to July 15 (peak summer) for realistic shade analysis
+        simulation_date = request.date or "2024-07-15"
 
         # Format hours for the prompt
         hours_str = ", ".join(str(h) for h in request.hours)
@@ -455,7 +456,9 @@ async def analyze_combined(request: CombinedRequest):
         clear_shade_cache()
 
         # Determine simulation date
-        simulation_date = request.date or date.today().isoformat()
+        # Default to July 15 (peak summer) to match heat data conditions
+        # Using today's date in winter would show everything as shaded due to low sun angle
+        simulation_date = request.date or "2024-07-15"
 
         # Format hours for the prompt
         hours_str = ", ".join(str(h) for h in request.hours)
